@@ -23,22 +23,6 @@ class StudentController extends Controller
             'password' => 'required|string|confirmed'
         ]);
 
-
-
-        // $base64_image = $request->input('profile_pic'); // your base64 encoded
-        // @list($type, $file_data) = explode(';', $base64_image);
-        // @list(, $file_data) = explode(',', $file_data);
-        // $imageName = 'IMAGE'.Str::random(30).'.'.'png';
-        // Storage::disk('public')->put('profile_image_file/'.$imageName, base64_decode($file_data));
-
-        // $token = getenv("TWILIO_AUTH_TOKEN");
-        // $twilio_sid = getenv("TWILIO_SID");
-        // $twilio_verify_sid = getenv("TWILIO_VERIFY_SID");
-        // $twilio = new Client($twilio_sid, $token);
-        // $twilio->verify->v2->services($twilio_verify_sid)
-        //     ->verifications
-        //     ->create("+91".$request->other_mobile_number, "sms");
-
         $student = new Student([
             'name' => $request->name,
             'USN' => $request->USN,
@@ -122,5 +106,17 @@ class StudentController extends Controller
             'message' => 'Successfully logged out'
         ]);
     }
+
+    // Home Page
+    public function student_details(Request $request){
+        $USN = Auth::guard('api-student')->user();
+
+        $data = [];
+
+        return response()->json([
+            'Details' => $data
+        ]);
+    }
+
 
 }

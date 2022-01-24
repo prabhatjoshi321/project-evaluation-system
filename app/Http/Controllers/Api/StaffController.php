@@ -11,6 +11,14 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 
+use App\Models\BatchList;
+use App\Models\Batch;
+use App\Models\Student;
+use App\Models\WeeklyReport;
+use App\Models\Project;
+Use Exception;
+use Illuminate\Queue\Console\BatchesTableCommand;
+
 class StaffController extends Controller
 {
     public function staff_signup(Request $request){
@@ -106,7 +114,179 @@ class StaffController extends Controller
         Auth::guard('api-staff')->user()->token()->revoke();
         return response()->json([
             'message' => 'Successfully logged out'
+        ], 200);
+    }
+
+    // Home Page
+
+    // Batch List creation
+
+
+    public function staff_batch_list_creation(Request $request){
+        $request->validate([
+            'batch_id' => 'required|regex:/(^([A-Z])(\d+)?$)/u|unique:batch_list',
+            'branch' => 'required|string',
         ]);
+        $SID = Auth::guard('api-staff')->user()->S_ID;
+
+        $batch_list = new BatchList([
+            'batch_id' => $request->batch_id ,
+            'branch' => $request->branch ,
+            'S_ID' => $SID ,
+        ]);
+        $batch_list->save();
+
+        return response()->json([
+            'message' => 'Successfully created batch'
+        ], 201);
+    }
+
+
+
+    // Batch Creation
+    public function staff_check_student_exists(Request $request){
+        $request->validate([
+            'USN' => 'required',
+        ]);
+        $data = Student::Where('USN', 'like', '%' . $request->USN . '%')->orderBy('USN')->get();
+        $json_decoded = json_decode($data);
+
+        $data_arranged = [];
+
+        foreach ($json_decoded as $item) {
+            $data_arranged[] = [
+                'USN' => $item->USN,
+                'name' => $item->name,
+            ];
+        }
+
+        return response()->json([
+            'data' => $data_arranged
+        ], 200);
+    }
+
+    public function staff_batch_creation(Request $request){
+        $request->validate([
+            'batch_id' => 'required|regex:/(^([A-Z])(\d+)?$)/u|exists:batch_list',
+            'USN' => 'required|unique:batch|exists:student',
+        ]);
+        $batch = new Batch([
+            'batch_id' => $request->batch_id ,
+            'USN' => $request->USN ,
+        ]);
+
+        try{
+            $batch->save();
+        }
+        catch(Exception $e){
+            return response()->json([
+                'error' => $e->getMessage()
+            ], 500);
+        }
+
+        return response()->json([
+            'message' => 'Successfully inserted student in batch'
+        ],);
+    }
+
+    // Weekly Report
+    public function staff_batch_weekly_report_creation(Request $request){
+        $request->validate([
+            'batch_id' => 'required|regex:/(^([A-Z])(\d+)?$)/u|exists:batch_list',
+            'date' => 'required|date_format:d/m/Y',
+            'remarks' => 'required|string',
+            'comments' => 'required|string'
+        ]);
+
+
+        $processed_date = Carbon::createFromFormat('d/m/Y', $request->date);
+        $day = $processed_date->format('l');
+        $week = $processed_date->weekNumberInMonth;
+        $date = $processed_date->format('Y-m-d');
+
+        if(WeeklyReport::where([['batch_id', '=', $request->batch_id], ['week', '=', $week]])->first() != null){
+            return response()->json([
+                'message' => 'Weekly report of the given batch week already exists'
+            ],200);
+        }
+
+        $weekly_report = new WeeklyReport([
+            'batch_id' => $request->batch_id ,
+            'day' => $day,
+            'week' => $week,
+            'date' => $date,
+            'remarks' => $request->remarks,
+            'comments' => $request->comments,
+        ]);
+        $weekly_report->save();
+
+        return response()->json([
+            'weekly_report' => $weekly_report,
+            'message' => 'Successfully created weekly report'
+        ],201);
+    }
+
+    // Create project
+    public function staff_create_project(Request $request){
+        $request->validate([
+            'batch_id' => 'required|regex:/(^([A-Z])(\d+)?$)/u|exists:batch_list',
+            'project_name' => 'required|string',
+        ]);
+        $SID = Auth::guard('api-staff')->user()->S_ID;
+
+        if(Project::where([['batch_id', '=', $request->batch_id]])->first() != null){
+            return response()->json([
+                'message' => 'Entry exists for the given batch'
+            ],200);
+        }
+
+        $project = new Project([
+            'batch_id' => $request->batch_id ,
+            'project_name' => $request->project_name,
+            'S_ID' => $SID,
+        ]);
+        $project->save();
+        return response()->json([
+            'weekly_report' => $project,
+            'message' => 'Successfully created Project'
+        ],201);
+    }
+
+    public function staff_get_batches_for_evaluation(Request $request){
+        $SID = Auth::guard('api-staff')->user()->S_ID;
+        $data = Project::where([['S_ID', '=', $SID]])->get();
+        $json_decoded = json_decode($data);
+        $batch = [];
+
+        foreach ($json_decoded as $item) {
+            $batch[] = [
+                'data' => $item
+            ];
+        }
+
+        $student = [];
+        foreach($batch as $item){
+            $student[] = [
+                'batch' => $item['data']->batch_id,
+                'USN' => Batch::where([['batch_id', '=' , $item['data']->batch_id]])->get("USN")
+            ];
+        }
+
+        $std = [];
+        foreach($student as $item){
+            $student_data = [];
+            foreach($item['USN'] as $usn){
+                $student_data[] = Student::where([['USN' , '=' ,  $usn->USN]])->first();
+
+            }
+            $std[$item['batch']] = $student_data;
+        }
+
+
+        return response()->json([
+            'data' => $std,
+        ],200);
+
     }
 
 }
