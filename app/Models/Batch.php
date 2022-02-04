@@ -14,6 +14,7 @@ class Batch extends Model
 
     protected $fillable = [
         'batch_id',
+        'branch',
         'USN'
     ];
 }

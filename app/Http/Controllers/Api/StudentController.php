@@ -11,6 +11,10 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 
+use App\Models\Batch;
+use App\Models\Project;
+use App\Models\Staff;
+
 class StudentController extends Controller
 {
 
@@ -25,7 +29,7 @@ class StudentController extends Controller
 
         $student = new Student([
             'name' => $request->name,
-            'USN' => $request->USN,
+            'USN' => strtoupper($request->USN),
             'branch' => $request->branch,
             'academic_year' => $request->academic_year,
             'password' => bcrypt($request->password)
@@ -58,18 +62,22 @@ class StudentController extends Controller
         $token->save();
         return response()->json([
             'student' => $student,
-            'tokend' => $token,
             'token' => $tokenResult->accessToken,
         ]);
     }
 
     public function student(Request $request){
-        return response()->json(Auth::guard('api-student')->user());
+        $student = Auth::guard('api-student')->user();
+        $batch = Batch::select('batch_id', 'branch')->Where('USN', '=', $student->USN)->orderBy('batch_id')->get();
+        return response()->json([
+            'student' => $student,
+            'batches' => $batch,
+        ]);
     }
 
     public function student_reset_password(Request $request){
         $input = $request->all();
-        $userid = Auth::guard('api-student')->user()->id;
+        $USN = Auth::guard('api-student')->user()->USN;
         $rules = array(
             'old_password' => 'required',
             'new_password' => 'required|min:6',
@@ -80,12 +88,12 @@ class StudentController extends Controller
             $arr = array("status" => 400, "message" => $validator->errors()->first(), "data" => array());
         } else {
             try {
-                if ((Hash::check(request('old_password'), Auth::user()->password)) == false) {
+                if ((Hash::check(request('old_password'), Auth::guard('api-student')->user()->password)) == false) {
                     $arr = array("status" => 400, "message" => "Check your old password.", "data" => array());
-                } else if ((Hash::check(request('new_password'), Auth::user()->password)) == true) {
+                } else if ((Hash::check(request('new_password'), Auth::guard('api-student')->user()->password)) == true) {
                     $arr = array("status" => 400, "message" => "Please enter a password which is not similar then current password.", "data" => array());
                 } else {
-                    User::where('id', $userid)->update(['password' => Hash::make($input['new_password'])]);
+                    Student::where('USN', $USN)->update(['password' => Hash::make($input['new_password'])]);
                     $arr = array("status" => 200, "message" => "Password updated successfully.", "data" => array());
                 }
             } catch (\Exception $ex) {
@@ -116,6 +124,64 @@ class StudentController extends Controller
         return response()->json([
             'Details' => $data
         ]);
+    }
+
+    // batch details
+    public function student_get_batches_assigned(Request $request){
+        $USN = Auth::guard('api-student')->user()->USN;
+        $batch = Batch::where([['USN', '=', $USN]])->first();
+        $student_list = Batch::where([['batch_id', '=', $batch->batch_id], ['branch','=',$batch->branch]])->get();
+        $data = [];
+        foreach($student_list as $item){
+            $data [] = [
+                'batch_data' => $item,
+                'student_detail' => Student::where([['USN', '=', $item->USN]])->first()
+            ];
+        }
+        return response()->json([
+            'data' => $data,
+        ], 200);
+    }
+
+    public function student_get_project_details(Request $request){
+        $USN = Auth::guard('api-student')->user()->USN;
+        $batch = Batch::where([['USN', '=', $USN]])->first();
+        $project = Project::where([['batch_id', '=', $batch->batch_id]])->first();
+
+        $staff = Staff::where([['S_ID','=',$project->S_ID]])->first();
+
+        return response()->json([
+            'data' => $project,
+            'staff' => $staff,
+        ], 200);
+    }
+
+    public function student_post_project_file(Request $request){
+
+        $request->validate([
+            'file' => 'required|mimes:pdf,ppt,pot,pps,pptx,potx,ppsx,thmx,doc,docx,xls,xlsx',
+        ]);
+
+        $USN = Auth::guard('api-student')->user()->USN;
+        $batch = Batch::where([['USN', '=', $USN]])->first();
+        $project = Project::where([['batch_id', '=', $batch->batch_id]])->first();
+
+        if ($request->hasFile('file')) {
+            $path = $request->file('file')->store('public/file');
+            $string = str_ireplace("public", "", $path);
+            $project->file_link = $string;
+        }else{
+            return response()->json([
+                'data' => $request->hasFile('file'),
+                'message' => 'Error. File not recieved.'
+            ], 401);
+        }
+        $project->save();
+
+        return response()->json([
+            'data' => $request->hasFile('file'),
+            'message' => 'Successfully saved project.'
+        ], 201);
     }
 
 

@@ -16,6 +16,7 @@ class CreateBatch extends Migration
         Schema::create('batch', function (Blueprint $table) {
             $table->string('batch_id');
             $table->foreign('batch_id')->references('batch_id')->on('batch_list')->onDelete('cascade');
+            $table->string('branch');
             $table->string('USN');
             $table->foreign('USN')->references('USN')->on('student')->onDelete('cascade');
             $table->timestamps();
